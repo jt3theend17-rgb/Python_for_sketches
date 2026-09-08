@@ -1,0 +1,356 @@
+from dataclasses import dataclass, field
+from typing import Dict, List, Tuple
+
+
+@dataclass(frozen=True)
+class Object:
+    name: str
+
+
+@dataclass(frozen=True)
+class Morphism:
+    name: str
+    source: str
+    target: str
+
+
+@dataclass(frozen=True)
+class Path:
+    morphisms: Tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class Equation:
+    left: Path
+    right: Path
+
+
+@dataclass(frozen=True)
+class Cone:
+    name: str
+    apex: str
+    diagram_objects: Tuple[str, ...]
+    legs: Dict[str, str]
+
+
+@dataclass
+class LimitSketch:
+    objects: Dict[str, Object] = field(default_factory=dict)
+    morphisms: Dict[str, Morphism] = field(default_factory=dict)
+    cones: Dict[str, Cone] = field(default_factory=dict)
+    equations: List[Equation] = field(default_factory=list)
+
+    def add_object(self, name: str):
+        if name in self.objects:
+            raise ValueError(f"Object already exists: {name}")
+
+        self.objects[name] = Object(name)
+
+    def add_morphism(self, name: str, source: str, target: str):
+        if name in self.morphisms:
+            raise ValueError(f"Morphism already exists: {name}")
+
+        if source not in self.objects:
+            raise ValueError(f"Unknown source object: {source}")
+
+        if target not in self.objects:
+            raise ValueError(f"Unknown target object: {target}")
+
+        self.morphisms[name] = Morphism(
+            name=name,
+            source=source,
+            target=target,
+        )
+
+    def add_cone(
+        self,
+        name: str,
+        apex: str,
+        diagram_objects: Tuple[str, ...],
+        legs: Dict[str, str],
+    ):
+        if name in self.cones:
+            raise ValueError(f"Cone already exists: {name}")
+
+        if apex not in self.objects:
+            raise ValueError(f"Unknown apex object: {apex}")
+
+        for obj in diagram_objects:
+            if obj not in self.objects:
+                raise ValueError(f"Unknown diagram object: {obj}")
+
+        for obj, leg in legs.items():
+            if leg not in self.morphisms:
+                raise ValueError(f"Unknown cone leg: {leg}")
+
+            morphism = self.morphisms[leg]
+
+            if morphism.source != apex:
+                raise ValueError(
+                    f"Cone leg {leg} does not have source {apex}"
+                )
+
+            if morphism.target != obj:
+                raise ValueError(
+                    f"Cone leg {leg} does not target {obj}"
+                )
+
+        self.cones[name] = Cone(
+            name=name,
+            apex=apex,
+            diagram_objects=diagram_objects,
+            legs=legs,
+        )
+
+    def path(self, *morphisms: str) -> Path:
+        """
+        Construct a composable path.
+
+        The tuple
+
+            path(f, g, h)
+
+        represents
+
+            A --f--> B --g--> C --h--> D.
+        """
+
+        for name in morphisms:
+            if name not in self.morphisms:
+                raise ValueError(f"Unknown morphism: {name}")
+
+        for f, g in zip(morphisms, morphisms[1:]):
+            first = self.morphisms[f]
+            second = self.morphisms[g]
+
+            if first.target != second.source:
+                raise ValueError(
+                    f"Non-composable path: "
+                    f"{first.name}: {first.source} -> {first.target}, "
+                    f"{second.name}: {second.source} -> {second.target}"
+                )
+
+        return Path(tuple(morphisms))
+
+    def add_equation(
+        self,
+        left: Path,
+        right: Path,
+    ):
+        left_source, left_target = self.path_type(left)
+        right_source, right_target = self.path_type(right)
+
+        if left_source != right_source:
+            raise ValueError("Equation has different source objects")
+
+        if left_target != right_target:
+            raise ValueError("Equation has different target objects")
+
+        self.equations.append(
+            Equation(left=left, right=right)
+        )
+
+    def path_type(self, path: Path) -> Tuple[str, str]:
+        if not path.morphisms:
+            raise ValueError("Empty paths are not currently supported")
+
+        first = self.morphisms[path.morphisms[0]]
+        last = self.morphisms[path.morphisms[-1]]
+
+        return first.source, last.target
+
+    def describe(self):
+        print("Objects:")
+        for obj in self.objects.values():
+            print(f"  {obj.name}")
+
+        print("\nMorphisms:")
+        for morphism in self.morphisms.values():
+            print(
+                f"  {morphism.name}: "
+                f"{morphism.source} -> {morphism.target}"
+            )
+
+        print("\nLimit cones:")
+        for cone in self.cones.values():
+            print(f"  {cone.name}:")
+            print(f"    apex = {cone.apex}")
+
+            for obj, leg in cone.legs.items():
+                print(f"    {leg}: {cone.apex} -> {obj}")
+
+        print("\nEquations:")
+        for equation in self.equations:
+            print(
+                f"  {equation.left.morphisms} "
+                f"= "
+                f"{equation.right.morphisms}"
+            )
+
+
+def monoid_sketch() -> LimitSketch:
+    sketch = LimitSketch()
+
+    # ------------------------------------------------------------
+    # Objects
+    # ------------------------------------------------------------
+
+    sketch.add_object("1")
+    sketch.add_object("M")
+    sketch.add_object("M2")
+    sketch.add_object("M3")
+
+    # ------------------------------------------------------------
+    # Binary product M x M
+    # ------------------------------------------------------------
+
+    sketch.add_morphism("pi1", "M2", "M")
+    sketch.add_morphism("pi2", "M2", "M")
+
+    sketch.add_cone(
+        name="M2_product",
+        apex="M2",
+        diagram_objects=("M", "M"),
+        legs={
+            "M_1": "pi1",
+            "M_2": "pi2",
+        },
+    )
+
+    # ------------------------------------------------------------
+    # Ternary product M x M x M
+    # ------------------------------------------------------------
+
+    sketch.add_morphism("pi1_3", "M3", "M")
+    sketch.add_morphism("pi2_3", "M3", "M")
+    sketch.add_morphism("pi3_3", "M3", "M")
+
+    sketch.add_cone(
+        name="M3_product",
+        apex="M3",
+        diagram_objects=("M", "M", "M"),
+        legs={
+            "M_1": "pi1_3",
+            "M_2": "pi2_3",
+            "M_3": "pi3_3",
+        },
+    )
+
+    # ------------------------------------------------------------
+    # Multiplication and unit
+    # ------------------------------------------------------------
+
+    sketch.add_morphism("mu", "M2", "M")
+    sketch.add_morphism("eta", "1", "M")
+
+    # ------------------------------------------------------------
+    # Identity morphism of M
+    # ------------------------------------------------------------
+
+    sketch.add_morphism("id_M", "M", "M")
+
+    # ------------------------------------------------------------
+    # Associativity
+    #
+    # M3 -> M2
+    #
+    # alpha = (mu(x,y), z)
+    # beta  = (x, mu(y,z))
+    # ------------------------------------------------------------
+
+    sketch.add_morphism("alpha", "M3", "M2")
+    sketch.add_morphism("beta", "M3", "M2")
+
+    # alpha = (mu pi1_3, pi3_3)
+
+    sketch.add_equation(
+        sketch.path("alpha", "pi1"),
+        sketch.path("pi1_3", "mu"),
+    )
+
+    sketch.add_equation(
+        sketch.path("alpha", "pi2"),
+        sketch.path("pi3_3"),
+    )
+
+    # beta = (pi1_3, mu pi2_3)
+
+    sketch.add_equation(
+        sketch.path("beta", "pi1"),
+        sketch.path("pi1_3"),
+    )
+
+    sketch.add_equation(
+        sketch.path("beta", "pi2"),
+        sketch.path("pi2_3", "mu"),
+    )
+
+    # Associativity:
+    #
+    # mu alpha = mu beta
+
+    sketch.add_equation(
+        sketch.path("alpha", "mu"),
+        sketch.path("beta", "mu"),
+    )
+
+    # ------------------------------------------------------------
+    # Left and right unit
+    #
+    # M -> M2
+    #
+    # lambda(x) = (eta(*), x)
+    # rho(x)    = (x, eta(*))
+    # ------------------------------------------------------------
+
+    sketch.add_morphism("lambda", "M", "M2")
+    sketch.add_morphism("rho", "M", "M2")
+
+    # lambda = (eta, id_M)
+
+    sketch.add_equation(
+        sketch.path("lambda", "pi1"),
+        sketch.path("eta"),
+    )
+
+    sketch.add_equation(
+        sketch.path("lambda", "pi2"),
+        sketch.path("id_M"),
+    )
+
+    # rho = (id_M, eta)
+
+    sketch.add_equation(
+        sketch.path("rho", "pi1"),
+        sketch.path("id_M"),
+    )
+
+    sketch.add_equation(
+        sketch.path("rho", "pi2"),
+        sketch.path("eta"),
+    )
+
+    # Left unit:
+    #
+    # mu lambda = id_M
+
+    sketch.add_equation(
+        sketch.path("lambda", "mu"),
+        sketch.path("id_M"),
+    )
+
+    # Right unit:
+    #
+    # mu rho = id_M
+
+    sketch.add_equation(
+        sketch.path("rho", "mu"),
+        sketch.path("id_M"),
+    )
+
+    return sketch
+
+
+if __name__ == "__main__":
+    monoids = monoid_sketch()
+    monoids.describe()
