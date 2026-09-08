@@ -1,0 +1,174 @@
+from dataclasses import dataclass, field
+from typing import Dict, List, Tuple
+
+
+@dataclass(frozen=True)
+class Object:
+    name: str
+
+
+@dataclass(frozen=True)
+class Morphism:
+    name: str
+    source: str
+    target: str
+
+
+@dataclass(frozen=True)
+class Cone:
+    name: str
+    apex: str
+    diagram_objects: Tuple[str, ...]
+    legs: Dict[str, str]
+    limit: bool = True
+
+
+@dataclass(frozen=True)
+class Equation:
+    left: Tuple[str, ...]
+    right: Tuple[str, ...]
+
+
+@dataclass
+class LimitSketch:
+    objects: Dict[str, Object] = field(default_factory=dict)
+    morphisms: Dict[str, Morphism] = field(default_factory=dict)
+    equations: List[Equation] = field(default_factory=list)
+    cones: Dict[str, Cone] = field(default_factory=dict)
+
+    def add_object(self, name: str):
+        if name in self.objects:
+            raise ValueError(f"Object '{name}' already exists.")
+
+        self.objects[name] = Object(name)
+
+    def add_morphism(self, name: str, source: str, target: str):
+        if name in self.morphisms:
+            raise ValueError(f"Morphism '{name}' already exists.")
+
+        if source not in self.objects:
+            raise ValueError(f"Unknown source object '{source}'.")
+
+        if target not in self.objects:
+            raise ValueError(f"Unknown target object '{target}'.")
+
+        self.morphisms[name] = Morphism(
+            name=name,
+            source=source,
+            target=target
+        )
+
+    def add_equation(
+        self,
+        left: Tuple[str, ...],
+        right: Tuple[str, ...]
+    ):
+        self._check_path(left)
+        self._check_path(right)
+
+        self.equations.append(
+            Equation(left=left, right=right)
+        )
+
+    def add_cone(
+        self,
+        name: str,
+        apex: str,
+        diagram_objects: Tuple[str, ...],
+        legs: Dict[str, str],
+        limit: bool = True
+    ):
+        if name in self.cones:
+            raise ValueError(f"Cone '{name}' already exists.")
+
+        if apex not in self.objects:
+            raise ValueError(f"Unknown apex object '{apex}'.")
+
+        for obj in diagram_objects:
+            if obj not in self.objects:
+                raise ValueError(f"Unknown diagram object '{obj}'.")
+
+        for obj, leg in legs.items():
+            if obj not in diagram_objects:
+                raise ValueError(
+                    f"Leg for '{obj}' is not part of the diagram."
+                )
+
+            if leg not in self.morphisms:
+                raise ValueError(
+                    f"Unknown cone leg '{leg}'."
+                )
+
+            morphism = self.morphisms[leg]
+
+            if morphism.source != apex:
+                raise ValueError(
+                    f"Leg '{leg}' does not start at apex '{apex}'."
+                )
+
+            if morphism.target != obj:
+                raise ValueError(
+                    f"Leg '{leg}' does not target '{obj}'."
+                )
+
+        self.cones[name] = Cone(
+            name=name,
+            apex=apex,
+            diagram_objects=diagram_objects,
+            legs=legs,
+            limit=limit
+        )
+
+    def _check_path(self, path: Tuple[str, ...]):
+        for morphism_name in path:
+            if morphism_name not in self.morphisms:
+                raise ValueError(
+                    f"Unknown morphism '{morphism_name}'."
+                )
+
+        for f, g in zip(path, path[1:]):
+            f_morphism = self.morphisms[f]
+            g_morphism = self.morphisms[g]
+
+            if f_morphism.target != g_morphism.source:
+                raise ValueError(
+                    f"Morphisms '{f}' and '{g}' are not composable."
+                )
+
+    def describe(self):
+        print("LIMIT SKETCH")
+        print("=" * 60)
+
+        print("\nObjects:")
+        for obj in self.objects.values():
+            print(f"  {obj.name}")
+
+        print("\nGenerating morphisms:")
+        for morphism in self.morphisms.values():
+            print(
+                f"  {morphism.name}: "
+                f"{morphism.source} -> {morphism.target}"
+            )
+
+        print("\nEquations:")
+        for equation in self.equations:
+            left = " · ".join(equation.left)
+            right = " · ".join(equation.right)
+            print(f"  {left} = {right}")
+
+        print("\nDistinguished cones:")
+        for cone in self.cones.values():
+            status = "LIMIT" if cone.limit else "CONE"
+
+            print(
+                f"  {cone.name}: "
+                f"{cone.apex} -> "
+                f"({', '.join(cone.diagram_objects)}) "
+                f"[{status}]"
+            )
+
+            for obj, leg in cone.legs.items():
+                print(
+                    f"      {leg}: "
+                    f"{cone.apex} -> {obj}"
+                )
